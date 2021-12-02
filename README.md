@@ -13,4 +13,4 @@ ToDo:
 
 - always make sure to commit and push the work to the github to share progress
 
-
+- make a figure where we look at the change in spatially averaged median oxygen values over all years
