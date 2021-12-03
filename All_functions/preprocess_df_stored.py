@@ -20,15 +20,19 @@ def str_to_np_array(array_string):
     Turn a array (in string format) to a numpy array
     """
     if type(array_string) == str:
+        if 'nan' in array_string:
+            array_string = array_string.replace('nan', '-9999')
         array_string = ','.join(array_string.replace('[ ', '[').split())
         if array_string[1] == ',':
             array_string = eliminate_comma(array_string, 1)
         if array_string[-2] == ',':
             array_string = eliminate_comma(array_string, -2)
         array_values = np.array(ast.literal_eval(array_string))
+        
         #replace -9999 with np.nan:
         array_values = np.where(array_values==-9999, np.nan, array_values)
         return array_values
+    
     if type(array_string) == float:
         return np.array([array_string])
     
@@ -43,6 +47,7 @@ def remove_Ellipsis(df, var):
             array = np.where(array==Ellipsis, np.nan, array)
         new_column.append(array)
     df[var] = new_column
+    
 
 def process_df(df, inspect=False):
     if inspect:
@@ -62,6 +67,7 @@ def process_df(df, inspect=False):
     else:
         for var in ['Temperature', 'Salinity', 'z', 'Oxygen', 'Chlorophyll']:
             try:
+                print('String transfer: ', var)
                 df[var] = list(map(lambda x: str_to_np_array(x),
                                    df[var]))
             except KeyError:
