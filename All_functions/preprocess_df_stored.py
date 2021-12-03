@@ -31,6 +31,18 @@ def str_to_np_array(array_string):
         return array_values
     if type(array_string) == float:
         return np.array([array_string])
+    
+def remove_Ellipsis(df, var):
+    """
+    Iterate through each row of the given var's column
+    Replace Ellipsis with np.nan
+    """
+    new_column = []
+    for array in df[var]:
+        if Ellipsis in array:
+            array = np.where(array==Ellipsis, np.nan, array)
+        new_column.append(array)
+    df[var] = new_column
 
 def process_df(df, inspect=False):
     if inspect:
@@ -55,9 +67,15 @@ def process_df(df, inspect=False):
             except KeyError:
                 print(f'No {var} in dataset')
                 pass
-            #Transfer the string time to datetime value. 
-            #The split in x.split('.')[0] is to account for the decimals behind the number of seconds ('1969-01-07 21:00:00.000000')
-            df['time'] = list(map(lambda x: datetime.strptime(x.split('.')[0], '%Y-%m-%d %H:%M:%S'),
-                                  df['time']))
-            return df
+            
+        #Replace Ellipsis:     
+        for var in ['Temperature', 'Salinity', 'z', 'Oxygen', 'Chlorophyll']:
+            print('Removing Ellipsis in: ', var)
+            remove_Ellipsis(df, var)
+            
+        #Transfer the string time to datetime value. 
+        #The split in x.split('.')[0] is to account for the decimals behind the number of seconds ('1969-01-07 21:00:00.000000')
+        df['time'] = list(map(lambda x: datetime.strptime(x.split('.')[0], '%Y-%m-%d %H:%M:%S'),
+                              df['time']))
+        return df
     
