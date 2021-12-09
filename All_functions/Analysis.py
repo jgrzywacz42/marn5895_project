@@ -32,6 +32,12 @@ def max_from_array(x):
     else:
         return np.max(x[~np.isnan(x)])
     
+def min_from_array(x):
+    if len(x[~np.isnan(x)])==0:
+        return np.nan
+    else:
+        return np.min(x[~np.isnan(x)])
+    
 def surface_from_array(x):
     if len(x[~np.isnan(x)])==0:
         return np.nan
@@ -92,29 +98,47 @@ def estimate_depth_average_var(df, var, z_lower=50, z_upper=100):
             var_sel_array = df[var][i][z_sel] 
             depth_avg_array.append(mean_from_array(var_sel_array.astype(float)))
     df[f'{z_lower}_{z_upper}_{var}'] = depth_avg_array
-            
+    
+def estimate_depth_min_var(df, var, z_lower=50, z_upper=100):
+    depth_min_array = []
+    for i in df.index:
+        print(i, end='\r')
+        if len(df[var][i][~np.isnan(df[var][i].astype(float))])==0:
+            depth_min_array.append(np.nan)
+        else:
+            #z_sel = np.logical_and(df['z'].values>z_lower, df['z'].values<z_upper)
+            z_sel = (df['z'][i]>z_lower)&(df['z'][i]<z_upper)
+            var_sel_array = df[var][i][z_sel] 
+            depth_min_array.append(min_from_array(var_sel_array.astype(float)))
+    df[f'{z_lower}_{z_upper}_min_{var}'] = depth_min_array 
+    
 def coarsen_df(df, var):
+    """
+    Similar to coarsen function of xarray. This simple version makes coarsen for box of size 1 degree lat and lon. 
+    """
     df['round_lat'] = list(map(lambda x: round(x), df['lat']))
     df['lat'] = list(map(lambda x: round(x), df['lat']))
     df['round_lon'] = list(map(lambda x: round(x), df['lon']))
     df['lon'] = list(map(lambda x: round(x), df['lon']))
     return df.groupby(by=["round_lat","round_lon"], dropna=True).mean()
 
-def make_yearly_maps(new_df, var, want_coarsen=True):
+def make_yearly_maps(new_df, var, want_coarsen=True): 
     full_name_dict = {'median_N_squared':'Median buoyancy squared (1/$s^2$)',
                   'median_Oxygen': 'Median oxygen (µmol/kg)',
                   'median_Chlorophyll': 'Median chlorophyll (µgram/l)',
                  'median_Temperature': 'Median Temeprature ($\degree$C)',
                      'surface_Temperature': 'Median Temeprature ($\degree$C)',
-                     '50_100_Oxygen': 'Oxygen from 50-100m (µmol/kg)',
-                     '50_100_N_squared': 'Buoyancy squared from 50-100 (1/$s^2$)',
-                     '100_150_N_squared': 'Buoyancy squared from 100-150 (1/$s^2$)'}
+                     '50_100_Oxygen': 'Average oxygen from 50-100m (µmol/kg)',
+                      '50_100_min_Oxygen': 'Minimum oxygen from 50-100m (µmol/kg)',
+                     '50_100_N_squared': 'Average buoyancy squared from 50-100m (1/$s^2$)',
+                     '100_150_N_squared': 'Average buoyancy squared from 100-150m (1/$s^2$)'}
     cmap_dict = {'median_N_squared': 'YlOrRd',
                  'median_Oxygen': cmocean.cm.oxy,
                  'median_Chlorophyll': cmocean.cm.algae,
                 'median_Temperature': cmocean.cm.thermal,
                 'surface_Temperature': cmocean.cm.thermal,
                 '50_100_Oxygen': cmocean.cm.oxy,
+                 '50_100_min_Oxygen': cmocean.cm.oxy,
                  '50_100_N_squared': 'YlOrRd',
                  '100_150_N_squared': 'YlOrRd'}
     
@@ -151,6 +175,35 @@ def make_yearly_maps(new_df, var, want_coarsen=True):
     cbar_ax = fig.add_axes([0.08, 0.04, 0.8, 0.01])
     fig.colorbar(im, cax=cbar_ax, label=full_name_dict[var], orientation='horizontal')
     fig.show()
+    
+def closest_value(value, array):
+    """
+    Source: https://stackoverflow.com/questions/2566412/find-nearest-value-in-numpy-array
+    """
+    array = np.asarray(array)
+    idx = (np.abs(array - value)).argmin()
+    return array[idx]
+
+def rigor_classify_geology(df, bathymetry_data):
+    """
+    From a (lat,lon) of the WOD data, find the the bottom depth by finding the elevation of that (lat,lon) 
+    From the elevation, classify that point: 
+    - From surface to 1000m (z_max from 0 to 1000): On shelf
+    - Below 1000m (z_max greater than 1000): Off shelf 
+    """
+    classify_array = []
+    for i in df.index:
+        print(i, end="\r")
+        lat_val = closest_value(value=df['lat'][i], array=bathymetry_data.lat.values)
+        lon_val = closest_value(value=df['lon'][i], array=bathymetry_data.lon.values)
+        max_z = -float(bathymetry_data.sel(lat=lat_val, lon=lon_val).elevation.values)
+        
+        if max_z >1000:
+            classify_array.append('off_shelf')
+        else:
+            classify_array.append('on_shelf')
+    df['geo_classify'] = classify_array
+    
     
 def classify_geology(df):
     classify_array = []
