@@ -20,24 +20,40 @@ def request_data_from_url(year, sensor_type='ctd'):
         pass
     return ds
 
+def replace_flagged_data(value_array, flag_array):
+    """
+    Assuming 0 means acceptable values, replace non-0 flagged values with -9999
+    """
+    value_array[flag_array!=0] = -9999
+    return value_array
+
 def rewrite_variable(ds3, var_name):
     """
     Input: xarray data, name of the variable to rewrite
     Method: 
+    - Replace flagged values with -9999
     - Loop through the row_size array. 
     - With each row size value, cut/trim the values from begining to begining+row size 
     - Append that cut/trimmed part to the var_rewrite_array
     Result: [array1,array2,array3...] where each array is the list of values for a given cast (lon, lat, time)
     """ 
+    value_array = ds3[var_name].values
+    #Replace flagged values with -9999
+    try:
+        flag_array = ds3[f'{var_name}_WODflag'].values
+        value_array = replace_flagged_data(value_array, flag_array)   
+    except KeyError:
+        print(f'{ds.id[-12:-3]}: No {var_name} flag available')
+        pass
+    
     var_rewrite_array = []
-
     starting_index = 0
     for row_size in ds3[f'{var_name}_row_size'].values:
         if np.isnan(row_size): #Empty/No data
             var_rewrite_array.append([-9999])
         else:
             ending_index = starting_index + int(row_size)
-            raw_values = np.array(ds3[var_name].values[starting_index:ending_index])
+            raw_values = np.array(value_array[starting_index:ending_index])
             replace_nan_values = np.where(np.isnan(raw_values), -9999, raw_values)
             var_rewrite_array.append(replace_nan_values)
             starting_index = ending_index
@@ -69,7 +85,7 @@ def create_clean_dataset(ds, output_type='dataframe'):
                 new_variable_array = rewrite_variable(ds, var_name=var_name)
                 data_vars[var_name] = new_variable_array
             except KeyError:
-                print(f'No {var_name} available in {ds.id[-15:-3]}')
+                print(f'{ds.id[-12:-3]}: No {var_name} available')
                 pass
 
         new_ds = xr.Dataset(data_vars=data_vars,
@@ -90,7 +106,7 @@ def create_clean_dataset(ds, output_type='dataframe'):
                 new_variable_array = rewrite_variable(ds, var_name=var_name)
                 new_df[var_name] = new_variable_array
             except KeyError:
-                print(f'No {var_name} available in {ds.id[-15:-3]}')
+                print(f'{ds.id[-12:-3]}: No {var_name} available')
                 pass
         return new_df
     
@@ -122,14 +138,16 @@ def save_data(ds, year, sensor_type, datatype='dataframe', storage_folder='/shar
     if datatype == 'xarray':
         ds.to_netcdf(datapath)
         
-def WOD_whole_process(year_range, sensor_type_range, save=True, datatype='dataframe'):
+def WOD_whole_process(year_range, sensor_type_range, save=True, datatype='dataframe',
+                     storage_folder='/shared/marn5895/data/HungJosiahProject/'):
     for year in year_range:
+        print(f'{year}: proccessing')
         for sensor_type in sensor_type_range:
             url_ds = request_data_from_url(year=year, sensor_type=sensor_type)
             if url_ds: #Only do this step if ds exist (not 0)
                 ds = create_clean_dataset(url_ds, datatype)
                 ds = trim_data_NWAtlantic(ds, datatype)  
-    if save:
-        save_data(ds, year, sensor_type, datatype)
-    else:
-        return ds
+                if save:
+                    save_data(ds, year, sensor_type, datatype, storage_folder=storage_folder)
+                else:
+                    return ds
